@@ -11,8 +11,9 @@ INCS=$(foreach dir, $(DIRS), -I$(dir))
 
 default: run
 
-.build%: clean
+.build%:
 	rm -f .build*
+	rm -f *.out
 	touch $@
 
 build: .buildrelease a.out
