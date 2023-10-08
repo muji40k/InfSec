@@ -15,10 +15,10 @@ class RotateRotorDecorator : public EnigmaRotor
         virtual size_t invert(size_t c) override;
 
         void stack(std::shared_ptr<RotateRotorDecorator> previous);
+        void adjust(size_t val=1);
 
     private:
         void registerFullTurn(RotateRotorDecorator *next);
-        void adjust(void);
 
         size_t apply_correction(size_t c) const;
         size_t undo_correction(size_t c) const;

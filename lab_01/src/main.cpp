@@ -112,6 +112,20 @@ int generateReflector(const char *filename)
     return 0;
 }
 
+size_t readOffset(const char *filename)
+{
+    if (nullptr == filename || !std::filesystem::exists(filename))
+        return 0;
+
+    std::ifstream fin;
+    size_t out;
+    fin.open(filename, std::ios::in);
+
+    fin >> out;
+
+    return out;
+}
+
 std::shared_ptr<CharMap> readMap(const char *filename)
 {
     if (nullptr == filename)
@@ -143,9 +157,13 @@ std::shared_ptr<EnigmaRotor> getRotor(std::shared_ptr<CharMap> map)
     return std::make_shared<PlainRotor>(map);
 }
 
-std::shared_ptr<RotateRotorDecorator> getWrap(std::list<std::shared_ptr<EnigmaRotor>>::iterator iter)
+std::shared_ptr<RotateRotorDecorator> getWrap(std::list<std::shared_ptr<EnigmaRotor>>::iterator iter,
+                                              std::list<size_t>::iterator offset)
 {
-    return std::make_shared<RotateRotorDecorator>(*iter);
+    auto rotor = std::make_shared<RotateRotorDecorator>(*iter);
+    rotor->adjust(*offset);
+
+    return rotor;
 }
 
 std::shared_ptr<Encoder> readEnigma(bool silent = false)
@@ -165,15 +183,20 @@ std::shared_ptr<Encoder> readEnigma(bool silent = false)
         reflector = std::make_shared<LogReflector>("ref", reflector, alphabet);
 
     std::list<std::shared_ptr<EnigmaRotor>> rotors;
+    std::list<size_t> offsets;
 
     for (const auto &entry : std::filesystem::directory_iterator("config/rotors"))
     {
+        std::string adjust_path = std::string("config/rotor_adjust/") + entry.path().filename().c_str();
+        offsets.push_back(readOffset(adjust_path.c_str()));
+
         std::shared_ptr<CharMap> map = readMap(entry.path().c_str());
         rotors.push_back(getRotor(map));
     }
 
     auto iter = rotors.begin();
-    std::shared_ptr<RotateRotorDecorator> p = getWrap(iter++);
+    auto iter_offset = offsets.begin();
+    std::shared_ptr<RotateRotorDecorator> p = getWrap(iter++, iter_offset++);
     std::list<std::shared_ptr<EnigmaRotor>> rotors_wrapped;
 
     std::shared_ptr<EnigmaRotor> w = p;
@@ -183,9 +206,9 @@ std::shared_ptr<Encoder> readEnigma(bool silent = false)
 
     rotors_wrapped.push_back(w);
 
-    for (size_t i = 2; rotors.end() != iter; ++i, ++iter)
+    for (size_t i = 2; rotors.end() != iter; ++i, ++iter, ++iter_offset)
     {
-        std::shared_ptr<RotateRotorDecorator> c = getWrap(iter);
+        std::shared_ptr<RotateRotorDecorator> c = getWrap(iter, iter_offset);
         c->stack(p);
         w = c;
 

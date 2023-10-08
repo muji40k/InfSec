@@ -39,14 +39,17 @@ void RotateRotorDecorator::registerFullTurn(RotateRotorDecorator *next)
     this->next = next;
 }
 
-void RotateRotorDecorator::adjust(void)
+void RotateRotorDecorator::adjust(size_t val)
 {
-    if (this->rotor->size() <= ++this->correction)
+    this->correction += val;
+
+    if (this->rotor->size() <= this->correction)
     {
-        this->correction = 0;
+        size_t amount = this->correction / this->rotor->size();
+        this->correction %= this->rotor->size();
 
         if (this->next)
-            this->next->adjust();
+            this->next->adjust(amount);
     }
 }
 
