@@ -1,0 +1,12 @@
+{
+    "initial_value": "./config/initial_value",
+    "des_blocks": [
+        "./config/des1/config.json",
+        "./config/des2/config.json",
+        "./config/des3/config.json",
+        "./config/des4/config.json",
+        "./config/des5/config.json",
+        "./config/des6/config.json"
+    ]
+}
+
