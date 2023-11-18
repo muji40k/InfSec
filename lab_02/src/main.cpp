@@ -152,12 +152,12 @@ std::shared_ptr<PCBC> read_pcbc(std::string filename)
     }
 
     stream.close();
-    std::list<std::shared_ptr<DES>> des_list;
+    std::list<std::shared_ptr<Encoder>> des_list;
 
     for (auto des : data.at("des_blocks"))
         des_list.push_back(read_des(des.get<std::string>()));
 
-    return std::make_shared<PCBC>(des_list, iv);
+    return std::make_shared<PCBC>(des_list, std::string(iv, 8), 8);
 }
 
 int main(int argc, char **argv)
