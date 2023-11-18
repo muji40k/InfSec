@@ -1,0 +1,11 @@
+**/out
+**/*.out
+**/.build*
+**/.ccls*
+**/.vscode
+**/ref
+**/res
+**/enc
+**/diagram
+rest
+
