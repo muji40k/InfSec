@@ -1,0 +1,139 @@
+\leftsection{Технологическая часть}
+
+\subsection{Описание программного обеспечения}
+
+Для реализации машины использовался язык C++. Конфигурация осуществляется
+при помощи файла config.json, расположенного в корневом каталоге.
+
+\begin{figure}[!h]
+    \begin{verbatim}
+./config.json
+{
+    "initial_value": "./config/initial_vector",
+    "aes": [
+        {"key": "./config/keys/key1", "offset": 1},
+        {"key": "./config/keys/key2", "offset": 2},
+        {"key": "./config/keys/key3", "offset": 1}
+    ]
+}
+    \end{verbatim}
+\end{figure}
+
+Соответсвтующие концигурационный  файлы состоят из последовательности байт:
+16 для начального вектора; 16, 24 или 32 для ключа.
+
+\begin{lstlisting}[language=c++, caption={Класс, реализующий алгоритм AES}]
+void AES::encodeBlock(const unsigned char *in,
+                      unsigned char *out)
+{
+    unsigned char current[4][4] = {{0}};
+    unsigned char *currentp = (unsigned char *)current;
+    const unsigned char *keyp;
+    for (size_t i = 0; 4 > i; i++)
+        for (size_t j = 0; 4 > j; j++)
+            current[j][i] = in[4 * i + j];
+    keyp = this->key_block->get(0);
+    for (size_t i = 0; 16 > i; i++)
+        currentp[i] ^= keyp[i];
+    for (size_t iter = 2; this->iters > iter; iter++)
+    {
+        for (size_t i = 0; 16 > i; i++)
+            currentp[i] = SBlock::direct(currentp[i]);
+        RowShifter::direct(current);
+        ColumnMixer::direct(current);
+        keyp = this->key_block->get(iter - 1);
+        for (size_t i = 0; 16 > i; i++)
+            currentp[i] ^= keyp[i];
+    }
+    for (size_t i = 0; 16 > i; i++)
+        currentp[i] = SBlock::direct(currentp[i]);
+    RowShifter::direct(current);
+    keyp = this->key_block->get(this->iters - 1);
+    for (size_t i = 0; 16 > i; i++)
+        currentp[i] ^= keyp[i];
+    for (size_t i = 0; 4 > i; i++)
+        for (size_t j = 0; 4 > j; j++)
+            out[4 * i + j] = current[j][i];
+}
+
+void AES::decodeBlock(const unsigned char *in,
+                      unsigned char *out)
+{
+    unsigned char current[4][4] = {{0}};
+    unsigned char *currentp = (unsigned char *)current;
+    const unsigned char *keyp;
+    for (size_t i = 0; 4 > i; i++)
+        for (size_t j = 0; 4 > j; j++)
+            current[j][i] = in[4 * i + j];
+    keyp = this->key_block->get(this->iters - 1);
+    for (size_t i = 0; 16 > i; i++)
+        currentp[i] ^= keyp[i];
+    RowShifter::inverse(current);
+    for (size_t i = 0; 16 > i; i++)
+        currentp[i] = SBlock::inverse(currentp[i]);
+    for (size_t iter = this->iters - 2; 0 < iter; iter--)
+    {
+        keyp = this->key_block->get(iter);
+        for (size_t i = 0; 16 > i; i++)
+            currentp[i] ^= keyp[i];
+        ColumnMixer::inverse(current);
+        RowShifter::inverse(current);
+        for (size_t i = 0; 16 > i; i++)
+            currentp[i] = SBlock::inverse(currentp[i]);
+    }
+    keyp = this->key_block->get(0);
+    for (size_t i = 0; 16 > i; i++)
+        currentp[i] ^= keyp[i];
+    for (size_t i = 0; 4 > i; i++)
+        for (size_t j = 0; 4 > j; j++)
+            out[4 * i + j] = current[j][i];
+}
+\end{lstlisting}
+
+\begin{lstlisting}[language=c++, caption={Класс, реализующий получение
+                                          раундовых ключей}]
+KeyBlock::KeyBlock(const std::string &key)
+{
+    this->checkKey(key);
+    this->keys = \
+    std::make_unique<unsigned char[]>(this->niters * 16);
+    memmove(this->keys.get(), key.data(), this->length);
+    unsigned char rc = 1;
+
+    for (size_t block = this->length / 4,
+                blocks = block,
+                limit = this->niters * 4;
+         limit > block; block++)
+    {
+        unsigned char *current  = &this->keys[4 * block],
+                      *previous = current - this->length;
+        this->blockCopy(current, current - 4);
+
+        if (0 == block % blocks)
+            this->blockRc(
+                this->blockXOR(
+                    this->blockS(this->blockShift(current)),
+                    previous),
+                &rc);
+        else if (32 == length && 4 == block % blocks)
+            this->blockXOR(this->blockS(current), previous);
+        else
+            this->blockXOR(current, previous);
+    }
+}
+\end{lstlisting}
+
+\subsection{Тестирование}
+\begin{table}[h]
+\small
+\begin{tabular}{|r|l|l|l|}
+\hline
+№ & Исходные данные                                                                                                            & Ожидаемый результат                                                                                                                                                                           & Фактический результат                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                \\ \hline
+1 & \begin{tabular}[c]{@{}l@{}}abcdefgh\\ ijklmnop\\ qrstuvwx\\ yz\textbackslash{}0a\end{tabular}                              & \begin{tabular}[c]{@{}l@{}}abcdefgh\\ ijklmnop\\ qrstuvwx\\ yz\textbackslash{}x0a\textbackslash{}x00\textbackslash{}x00\textbackslash{}x00\textbackslash{}x00\textbackslash{}x00\end{tabular} & \begin{tabular}[c]{@{}l@{}}abcdefgh\\ ijklmnop\\ qrstuvwx\\ yz\textbackslash{}x0a\textbackslash{}x00\textbackslash{}x00\textbackslash{}x00\textbackslash{}x00\textbackslash{}x00\end{tabular}                                                                                                                                                                                                                                                                                                                                        \\ \hline
+2 & Пустой файл                                                                                                                & Пустой файл                                                                                                                                                                                   & Пустой файл                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          \\ \hline
+3 & \begin{tabular}[c]{@{}l@{}}Попытка расшифровать\\ сообщение из теста №1\\ с другим ключом\\ (во втором блоке)\end{tabular} & \begin{tabular}[c]{@{}l@{}}abcdefghijklmnop \\ \textless{}блок 16 байт\textgreater{}\end{tabular}                                                                                  & \begin{tabular}[c]{@{}l@{}}abcdefghijklmnop\\ \textbackslash{}xac\textbackslash{}x68\textbackslash{}x64\textbackslash{}xbe \\ \textbackslash{}x8e\textbackslash{}xae\textbackslash{}x82\textbackslash{}x55 \\ \textbackslash{}x8c\textbackslash{}x7a\textbackslash{}x45\textbackslash{}xcc \\ \textbackslash{}xd4\textbackslash{}x8c\textbackslash{}x6a\textbackslash{}x42 \end{tabular} \\ \hline
+\end{tabular}
+\end{table}
+
+
+

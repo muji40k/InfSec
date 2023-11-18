@@ -1,0 +1,9 @@
+{
+    "initial_value": "./config/initial_vector",
+    "aes": [
+        {"key": "./config/keys/key1", "offset": 1},
+        {"key": "./config/keys/key4", "offset": 2},
+        {"key": "./config/keys/key3", "offset": 1}
+    ]
+}
+
