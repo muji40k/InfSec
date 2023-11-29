@@ -1,0 +1,344 @@
+\leftsection{Технологическая часть}
+
+\subsection{Описание программного обеспечения}
+
+Для реализации машины использовался язык C++. Конфигурация осуществляется
+при помощи файлов private.json и public.json, расположенных в корневом каталоге,
+содержащих соответствующие значения закрытого и открытого ключей.
+Длина ключа выбрана равной 64 бита.
+
+\begin{figure}[!h]
+    \begin{verbatim}
+./public.json
+{
+    "e": 17,
+    "n": 479653117661354309
+}
+./private.json
+{
+    "d": 282148891917378473,
+    "n": 479653117661354309
+}
+    \end{verbatim}
+\end{figure}
+
+\begin{lstlisting}[language=c++, caption={Класс, реализующий алгоритм RSA}]
+class RSA : public Encoder
+{
+    public:
+        RSA(unsigned long long n);
+        void setPublicKey(unsigned long long e);
+        void setPrivateKey(unsigned long long d);
+        virtual ~RSA(void) override = default;
+        virtual std::string encode(const std::string &origin) override;
+        virtual std::string decode(const std::string &origin) override;
+    private:
+        unsigned long long e;
+        unsigned long long d;
+        const unsigned long long n;
+};
+
+static unsigned long long modadd(unsigned long long a,
+                                 unsigned long long b,
+                                 unsigned long long mod);
+static unsigned long long modmul(unsigned long long a,
+                                 unsigned long long b,
+                                 unsigned long long mod);
+static unsigned long long modpow(unsigned long long a,
+                                 unsigned long long pow,
+                                 unsigned long long mod);
+
+
+std::string RSA::encode(const std::string &origin)
+{
+    if (0 == this->e)
+        throw;
+    size_t size = origin.length(), rest = size % 7;
+    size = size / 7 + (rest ? 1 : 0);
+    std::string out;
+    out.reserve(size * 8);
+    unsigned long long current, mask = 0x00ffffffffffffff;
+    for (size_t i = 0; size > i; i++)
+    {
+        if (size == i + 1 && rest)
+        {
+            mask = 0;
+            for (size_t j = 0; rest > j; j++)
+                mask = (mask << 8) | 0xff;
+        }
+        current = *(unsigned long long *)(origin.data() + 7 * i)
+                  & mask;
+        current = modpow(current, this->e, this->n);
+        out += std::string((char *)&current, 8);
+    }
+    return out;
+}
+
+std::string RSA::decode(const std::string &origin)
+{
+    if (0 == this->d)
+        throw;
+    size_t size = origin.length(), psize = size / 8;
+    if (0 != size % 8)
+        throw;
+    std::string out;
+    out.reserve(size - psize);
+    out.resize(size - psize);
+    const unsigned long long *inp =
+    (unsigned long long *)origin.data();
+    unsigned long long current;
+    char *outp = out.data(), *currentp = (char *)&current;
+    for (size_t i = 0; psize > i; i++)
+    {
+        current = inp[i];
+        current = modpow(current, this->d, this->n);
+        for (size_t j = 0; 7 > j; j++)
+            *(outp++) = currentp[j];
+    }
+    return out;
+}
+
+static unsigned long long modadd(unsigned long long a,
+                                 unsigned long long b,
+                                 unsigned long long mod)
+{
+    a %= mod;
+    b %= mod;
+    unsigned long long diff = mod - b;
+    if (a >= diff)
+        return a - diff;
+    return a + b;
+}
+
+static unsigned long long modmul2(unsigned long long a,
+                                  unsigned long long mod)
+{
+    unsigned long long shrinked = mod >> 1, rest = mod & 1;
+    if (a >= shrinked)
+        return ((a - shrinked) << 1) - rest;
+    return a << 1;
+}
+
+static unsigned long long modmul(unsigned long long a,
+                                 unsigned long long b,
+                                 unsigned long long mod)
+{
+    a %= mod;
+    b %= mod;
+    unsigned long long result = 0;
+    for (; b; b >>= 1, a = modmul2(a, mod))
+        if (b & 1)
+            result = modadd(result, a, mod);
+    return result;
+}
+
+static unsigned long long modpow(unsigned long long a,
+                                 unsigned long long pow,
+                                 unsigned long long mod)
+{
+    a %= mod;
+    unsigned long long result = 1;
+    for (; pow; pow >>= 1)
+    {
+        if (pow & 1)
+            result = modmul(result, a, mod);
+        a = modmul(a, a, mod);
+    }
+    return result;
+}
+\end{lstlisting}
+
+\begin{lstlisting}[language=c++, caption={Класс, реализующий алгоритм MD5}]
+class MD5 : public HashFunction
+{
+    public:
+        virtual ~MD5(void) override = default;
+        virtual std::string apply(const std::string &origin) override;
+    private:
+        using FFunc = unsigned int (*)(const unsigned int,
+                                       const unsigned int,
+                                       const unsigned int);
+        using Iter = struct
+        {
+            FFunc func;
+            size_t k;
+        };
+        static void getIteration(const size_t i, Iter &handler);
+        static unsigned int F(const unsigned int b,
+                              const unsigned int c,
+                              const unsigned int d);
+        static unsigned int G(const unsigned int b,
+                              const unsigned int c,
+                              const unsigned int d);
+        static unsigned int H(const unsigned int b,
+                              const unsigned int c,
+                              const unsigned int d);
+        static unsigned int I(const unsigned int b,
+                              const unsigned int c,
+                              const unsigned int d);
+    private:
+        static const unsigned char expansion[64];
+        static const size_t S[64];
+        static const unsigned int K[64];
+};
+
+const unsigned char MD5::expansion[64] = { 0x80 };
+
+const size_t MD5::S[64] =
+{
+    ...
+};
+
+const unsigned int MD5::K[64] =
+{
+    ...
+};
+
+template <typename Type>
+Type shift_left(const Type val, size_t size)
+{
+    static constexpr const size_t tsize = sizeof(Type) << 3;
+    size %= tsize;
+    return (val << size) | (val >> (tsize - size));
+}
+
+std::string MD5::apply(const std::string &origin)
+{
+    size_t size = origin.length(), esize;
+    const size_t bits = size * 8;
+    const size_t rest = size % 64;
+    if (56 > rest)
+        esize = 56 - rest;
+    else
+        esize = 120 - rest;
+    size += esize + 8;
+    std::string copy;
+    copy.reserve(size);
+    copy += origin + std::string((const char *)MD5::expansion, esize)
+            + std::string((char *)&bits, 8);
+    const unsigned char *data = (unsigned char *)copy.data();
+    const unsigned int *current = nullptr;
+    unsigned int A = 0x67452301, a,
+                 B = 0xEFCDAB89, b,
+                 C = 0x98BADCFE, c,
+                 D = 0x10325476, d,
+                 F = 0;
+    Iter handler;
+    for (size_t i = 0, blocks = size >> 6; blocks > i; i++)
+    {
+        a = A, b = B, c = C, d = D;
+        current = (const unsigned int *)(data + i * 64);
+        for (size_t j = 0; 64 > j; j++)
+        {
+            MD5::getIteration(j, handler);
+
+            F = handler.func(b, c, d) + a + MD5::K[j]
+                + current[handler.k];
+            a = d;
+            d = c;
+            c = b;
+            b += shift_left<unsigned int>(F, MD5::S[j]);
+        }
+        A += a, B += b, C += c, D += d;
+    }
+    return std::string((char *)&A, 4) + std::string((char *)&B, 4)
+           + std::string((char *)&C, 4) + std::string((char *)&D, 4);
+}
+
+void MD5::getIteration(const size_t i, Iter &handler)
+{
+    if (16 > i)
+    {
+        handler.func = &MD5::F;
+        handler.k = i;
+    }
+    else if (32 > i)
+    {
+        handler.func = &MD5::G;
+        handler.k = (5 * i + 1) % 16;
+    }
+    else if (48 > i)
+    {
+        handler.func = &MD5::H;
+        handler.k = (3 * i + 5) % 16;
+    }
+    else
+    {
+        handler.func = &MD5::I;
+        handler.k = (7 * i) % 16;
+    }
+}
+
+unsigned int MD5::F(const unsigned int b, const unsigned int c,
+                    const unsigned int d)
+{
+    return (b & c) | (~b & d);
+}
+
+unsigned int MD5::G(const unsigned int b, const unsigned int c,
+                    const unsigned int d)
+{
+    return (b & d) | (~d & c);
+}
+
+unsigned int MD5::H(const unsigned int b, const unsigned int c,
+                    const unsigned int d)
+{
+    return b ^ c ^ d;
+}
+
+unsigned int MD5::I(const unsigned int b, const unsigned int c,
+                    const unsigned int d)
+{
+    return c ^ (~d | b);
+}
+\end{lstlisting}
+
+\subsection{Тестирование}
+
+\vspace{-2\baselineskip}
+
+\begin{table}[h]
+\footnotesize
+\caption{Тестирование алгоритма MD5}
+\begin{center}
+\begin{tabular}{|r|l|l|l|}
+\hline
+№ & Исходные данные                                                                        & Ожидаемый результат              & Фактический результат            \\ \hline
+1 & \textless{}Пустая строка\textgreater{}                                                 & d41d8cd98f00b204e9800998ecf8427e & d41d8cd98f00b204e9800998ecf8427e \\ \hline
+2 & \begin{tabular}[c]{@{}l@{}}abcdefghijklm\\ nopqstuvwxyz\textbackslash{}0a\end{tabular} & e302f9ecd2d189fa80aac1c3392e9b9c & e302f9ecd2d189fa80aac1c3392e9b9c \\ \hline
+3 & md5                                                                                    & 1bc29b36f623ba82aaf6724fd3b16718 & 1bc29b36f623ba82aaf6724fd3b16718 \\ \hline
+\end{tabular}
+\end{center}
+\end{table}
+
+Для тестирования алгоритма RSA использовались ключи, приведенные выше.
+
+\begin{table}[h]
+\small
+\caption{Тестирование алгоритма RSA (шифрование)}
+\begin{center}
+\begin{tabular}{|r|r|r|r|}
+\hline
+№ & Исходные данные    & Ожидаемый результат & Фактический результат \\ \hline
+1 & 1                  & 1                   & 1                     \\ \hline
+2 & 123                & 159162881495752659  & 159162881495752659    \\ \hline
+3 & 324440504654685957 & 64871042383186893   & 64871042383186893     \\ \hline
+\end{tabular}
+\end{center}
+\end{table}
+
+\begin{table}[h]
+\small
+\caption{Тестирование алгоритма RSA (расшифровка)}
+\begin{center}
+\begin{tabular}{|r|r|r|r|}
+\hline
+№ & Исходные данные    & Ожидаемый результат & Фактический результат \\ \hline
+1 & 1                  & 1                   & 1                     \\ \hline
+2 & 159162881495752659 & 123                 & 123                   \\ \hline
+3 & 64871042383186893  & 324440504654685957  & 324440504654685957    \\ \hline
+\end{tabular}
+\end{center}
+\end{table}
+
