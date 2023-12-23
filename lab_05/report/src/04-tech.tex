@@ -1,0 +1,114 @@
+\leftsection{Технологическая часть}
+
+\subsection{Описание программного обеспечения}
+
+Для реализации машины использовался язык C++.
+
+\begin{lstlisting}[language=c++, caption={Метод, реализующий сжатие}]
+std::string LZW::compress(const std::string &origin)
+{
+    if (origin.empty())
+        return origin;
+
+    std::string out;
+    WTable table;
+    BufferWriter writer(out);
+    std::string sequence = "", last = "";
+
+    for (char c : origin)
+    {
+        last = sequence;
+        sequence += c;
+
+        if (!table.present(sequence))
+        {
+            writer.add(table.get(last));
+            table.add(sequence);
+            sequence = c, last = "";
+        }
+    }
+
+    writer.add(table.get(sequence));
+    writer.flush();
+
+    return out;
+}
+\end{lstlisting}
+
+\clearpage
+
+\begin{lstlisting}[language=c++, caption={Метод, реализующий распаковку}]
+std::string LZW::decompress(const std::string &origin)
+{
+    if (origin.empty())
+        return origin;
+
+    std::string out;
+    RTable table;
+    BufferReader reader(origin);
+    unsigned short code = reader.read();
+    std::string previous, current;
+
+    previous = table.get(code);
+    out += previous;
+
+    while (reader.rest())
+    {
+        code = reader.read();
+
+        if (table.present(code))
+        {
+            current = table.get(code);
+            table.add(previous + current[0]);
+        }
+        else // Handle mirror sequence c.*c.*c (skip of index)
+        {
+            current = previous + previous[0];
+            table.add(current);
+        }
+
+        out += current;
+        previous = current;
+    }
+
+    return out;
+}
+\end{lstlisting}
+
+\clearpage
+
+\subsection{Тестирование}
+
+\vspace{-2\baselineskip}
+
+\begin{table}[h]
+\caption{Тестирование алгоритма сжатия}
+\begin{center}
+\begin{tabular}{|r|l|l|l|}
+\hline
+№ & Исходные данные                                                            & Ожидаемый результат                                                            & Фактический результат                                                          \\ \hline
+1 & Пустой файл                                                                & Пустой файл                                                                    & Пустой файл                                                                    \\ \hline
+2 & <31>                                                                       & <31><00>                                                                       & <31><00>                                                                       \\ \hline
+3 & \begin{tabular}[c]{@{}l@{}}<31><31><31>\\ <31><31><31>\\ <31>\end{tabular} & \begin{tabular}[c]{@{}l@{}}<31><00><10>\\ <01><11><03>\end{tabular}            & \begin{tabular}[c]{@{}l@{}}<31><00><10>\\ <01><11><03>\end{tabular}            \\ \hline
+4 & <61><62><63>                                                               & \begin{tabular}[c]{@{}l@{}}<61><20><06>\\ <63><00>\end{tabular}                & \begin{tabular}[c]{@{}l@{}}<61><20><06>\\ <63><00>\end{tabular}                \\ \hline
+5 & \begin{tabular}[c]{@{}l@{}}<61><62><63>\\ <61><62><63>\end{tabular}        & \begin{tabular}[c]{@{}l@{}}<61><20><06>\\ <63><00><10>\\ <63><00>\end{tabular} & \begin{tabular}[c]{@{}l@{}}<61><20><06>\\ <63><00><10>\\ <63><00>\end{tabular} \\ \hline
+\end{tabular}
+\end{center}
+\end{table}
+
+\begin{table}[h]
+\caption{Тестирование алгоритма распаковки}
+\begin{center}
+\begin{tabular}{|r|l|l|l|}
+\hline
+№ & Исходные данные                                                                & Ожидаемый результат                                                        & Фактический результат                                                      \\ \hline
+1 & Пустой файл                                                                    & Пустой файл                                                                & Пустой файл                                                                \\ \hline
+2 & <31><00>                                                                       & <31>                                                                       & <31>                                                                       \\ \hline
+3 & \begin{tabular}[c]{@{}l@{}}<31><00><10>\\ <01><11><03>\end{tabular}            & \begin{tabular}[c]{@{}l@{}}<31><31><31>\\ <31><31><31>\\ <31>\end{tabular} & \begin{tabular}[c]{@{}l@{}}<31><31><31>\\ <31><31><31>\\ <31>\end{tabular} \\ \hline
+4 & \begin{tabular}[c]{@{}l@{}}<61><20><06>\\ <63><00>\end{tabular}                & <61><62><63>                                                               & <61><62><63>                                                               \\ \hline
+5 & \begin{tabular}[c]{@{}l@{}}<61><20><06>\\ <63><00><10>\\ <63><00>\end{tabular} & \begin{tabular}[c]{@{}l@{}}<61><62><63>\\ <61><62><63>\end{tabular}        & \begin{tabular}[c]{@{}l@{}}<61><62><63>\\ <61><62><63>\end{tabular}        \\ \hline
+6 & <31>                                                                           & Ошибка                                                                     & Ошибка                                                                     \\ \hline
+\end{tabular}
+\end{center}
+\end{table}
+
